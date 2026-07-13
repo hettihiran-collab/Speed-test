@@ -1,0 +1,528 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pulse — Network Bench</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #14171B;
+    --panel: #1E2227;
+    --panel-raised: #262B31;
+    --panel-inset: #171A1E;
+    --lcd-bg: #0A0F0D;
+    --amber: #FFB454;
+    --amber-dim: #7A5A2C;
+    --cyan: #6EC9D8;
+    --cyan-dim: #345257;
+    --text: #D7DBDD;
+    --text-dim: #82898F;
+    --red: #FF6B6B;
+    --green: #8FD19E;
+    --line: #33383F;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    background-image:
+      radial-gradient(circle at 15% 10%, rgba(255,255,255,0.02), transparent 40%),
+      radial-gradient(circle at 85% 90%, rgba(255,255,255,0.015), transparent 45%);
+    color: var(--text);
+    font-family: 'IBM Plex Sans', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+
+  .bench {
+    width: 100%;
+    max-width: 640px;
+    background: var(--panel);
+    border-radius: 14px;
+    border: 1px solid #303540;
+    box-shadow:
+      0 40px 80px -30px rgba(0,0,0,0.6),
+      inset 0 1px 0 rgba(255,255,255,0.03);
+    overflow: hidden;
+  }
+
+  /* header strip */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--line);
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .brand-mark {
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--amber);
+    box-shadow: 0 0 8px 1px rgba(255,180,84,0.5);
+  }
+  .brand-name {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.14em;
+    color: var(--text);
+  }
+  .brand-sub {
+    font-size: 11px;
+    color: var(--text-dim);
+    letter-spacing: 0.06em;
+  }
+  .status-row {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+  }
+  .status-led {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--text-dim);
+    transition: background 0.3s, box-shadow 0.3s;
+  }
+  .status-led.live {
+    background: var(--green);
+    box-shadow: 0 0 6px 1px rgba(143,209,158,0.6);
+  }
+  .status-led.err {
+    background: var(--red);
+    box-shadow: 0 0 6px 1px rgba(255,107,107,0.6);
+  }
+
+  /* main readout panel */
+  .readout {
+    margin: 20px 22px 0;
+    background: var(--lcd-bg);
+    border-radius: 8px;
+    border: 1px solid #05080A;
+    padding: 22px 24px 18px;
+    position: relative;
+    box-shadow: inset 0 2px 10px rgba(0,0,0,0.6);
+  }
+  .readout::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 8px;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(255,255,255,0.012) 0px,
+      rgba(255,255,255,0.012) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    pointer-events: none;
+  }
+
+  .readout-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10.5px;
+    letter-spacing: 0.16em;
+    color: var(--amber-dim);
+    text-transform: uppercase;
+  }
+  .readout-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-weight: 500;
+    font-size: 52px;
+    line-height: 1.1;
+    color: var(--amber);
+    margin-top: 2px;
+    text-shadow: 0 0 18px rgba(255,180,84,0.35);
+    font-variant-numeric: tabular-nums;
+  }
+  .readout-value .unit {
+    font-size: 20px;
+    color: var(--amber-dim);
+    margin-left: 8px;
+  }
+  .readout-phase {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 6px;
+    letter-spacing: 0.04em;
+  }
+
+  /* strip chart */
+  .strip {
+    margin-top: 16px;
+    height: 90px;
+    background: rgba(255,255,255,0.015);
+    border-radius: 4px;
+    border: 1px solid #171B1E;
+  }
+  .strip svg { display: block; width: 100%; height: 100%; }
+
+  /* metrics row */
+  .metrics {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    margin: 18px 22px 0;
+    background: var(--line);
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--line);
+  }
+  .metric {
+    background: var(--panel-raised);
+    padding: 14px 16px;
+  }
+  .metric-label {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--text-dim);
+    text-transform: uppercase;
+  }
+  .metric-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 22px;
+    font-weight: 500;
+    margin-top: 4px;
+    color: var(--text);
+    font-variant-numeric: tabular-nums;
+  }
+  .metric.ping .metric-value { color: var(--text); }
+  .metric.down .metric-value { color: var(--amber); }
+  .metric.up .metric-value { color: var(--cyan); }
+  .metric-unit { font-size: 12px; color: var(--text-dim); margin-left: 4px; }
+
+  /* controls */
+  .controls {
+    padding: 20px 22px 22px;
+    display: flex;
+    justify-content: center;
+  }
+  .run-btn {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--bg);
+    background: var(--amber);
+    border: none;
+    border-radius: 6px;
+    padding: 13px 34px;
+    cursor: pointer;
+    transition: transform 0.12s ease, background 0.2s;
+    box-shadow: 0 4px 14px rgba(255,180,84,0.25);
+  }
+  .run-btn:hover { background: #FFC578; }
+  .run-btn:active { transform: scale(0.97); }
+  .run-btn:disabled {
+    background: var(--panel-raised);
+    color: var(--text-dim);
+    cursor: default;
+    box-shadow: none;
+  }
+
+  /* log */
+  .log {
+    margin: 0 22px 22px;
+    background: var(--panel-inset);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 16px;
+    height: 96px;
+    overflow-y: auto;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 11px;
+    line-height: 1.7;
+    color: var(--text-dim);
+  }
+  .log div span.tag { color: var(--cyan); margin-right: 6px; }
+  .log div span.ok { color: var(--green); }
+  .log div span.warn { color: var(--red); }
+  .log::-webkit-scrollbar { width: 6px; }
+  .log::-webkit-scrollbar-thumb { background: var(--line); border-radius: 3px; }
+
+  .footnote {
+    text-align: center;
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 0 22px 20px;
+    font-family: 'IBM Plex Mono', monospace;
+    letter-spacing: 0.02em;
+  }
+
+  @media (max-width: 480px) {
+    .readout-value { font-size: 38px; }
+    .metrics { grid-template-columns: repeat(3, 1fr); }
+    .metric { padding: 10px 10px; }
+    .metric-value { font-size: 17px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bench">
+
+  <div class="header">
+    <div class="brand">
+      <div class="brand-mark" id="brandLed"></div>
+      <div>
+        <div class="brand-name">PULSE</div>
+        <div class="brand-sub">Network Bench</div>
+      </div>
+    </div>
+    <div class="status-row">
+      <div class="status-led" id="statusLed"></div>
+      <span id="statusText">IDLE</span>
+    </div>
+  </div>
+
+  <div class="readout">
+    <div class="readout-label" id="readoutLabel">STANDBY</div>
+    <div class="readout-value"><span id="readoutValue">0.0</span><span class="unit">Mbps</span></div>
+    <div class="readout-phase" id="readoutPhase">Press start to run the line test.</div>
+
+    <div class="strip">
+      <svg id="stripSvg" viewBox="0 0 600 90" preserveAspectRatio="none">
+        <polyline id="stripLine" fill="none" stroke="#FFB454" stroke-width="1.6" points=""></polyline>
+      </svg>
+    </div>
+  </div>
+
+  <div class="metrics">
+    <div class="metric ping">
+      <div class="metric-label">Ping</div>
+      <div class="metric-value"><span id="pingVal">—</span><span class="metric-unit">ms</span></div>
+    </div>
+    <div class="metric down">
+      <div class="metric-label">Download</div>
+      <div class="metric-value"><span id="downVal">—</span><span class="metric-unit">Mbps</span></div>
+    </div>
+    <div class="metric up">
+      <div class="metric-label">Upload</div>
+      <div class="metric-value"><span id="upVal">—</span><span class="metric-unit">Mbps</span></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <button class="run-btn" id="runBtn">Start test</button>
+  </div>
+
+  <div class="log" id="log">
+    <div><span class="tag">&gt;</span>Bench ready. Awaiting instruction.</div>
+  </div>
+
+  <div class="footnote">Measurements run in your browser against a public edge network. Results vary with local network conditions.</div>
+
+</div>
+
+<script>
+(function() {
+  const runBtn = document.getElementById('runBtn');
+  const statusLed = document.getElementById('statusLed');
+  const statusText = document.getElementById('statusText');
+  const readoutLabel = document.getElementById('readoutLabel');
+  const readoutValue = document.getElementById('readoutValue');
+  const readoutPhase = document.getElementById('readoutPhase');
+  const pingVal = document.getElementById('pingVal');
+  const downVal = document.getElementById('downVal');
+  const upVal = document.getElementById('upVal');
+  const logEl = document.getElementById('log');
+  const stripLine = document.getElementById('stripLine');
+  const brandLed = document.getElementById('brandLed');
+
+  let stripPoints = [];
+  const STRIP_W = 600, STRIP_H = 90, STRIP_N = 60;
+
+  function log(msg, cls) {
+    const d = document.createElement('div');
+    d.innerHTML = '<span class="tag">&gt;</span>' + (cls ? '<span class="' + cls + '">' + msg + '</span>' : msg);
+    logEl.appendChild(d);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function setStatus(state, label) {
+    statusLed.className = 'status-led' + (state === 'live' ? ' live' : state === 'err' ? ' err' : '');
+    statusText.textContent = label;
+  }
+
+  function resetStrip() {
+    stripPoints = new Array(STRIP_N).fill(0);
+    drawStrip();
+  }
+
+  function pushStrip(val, maxVal) {
+    stripPoints.push(val);
+    if (stripPoints.length > STRIP_N) stripPoints.shift();
+    drawStrip(maxVal);
+  }
+
+  function drawStrip(maxVal) {
+    const max = Math.max(maxVal || 1, ...stripPoints, 1);
+    const step = STRIP_W / (STRIP_N - 1);
+    const pts = stripPoints.map((v, i) => {
+      const x = i * step;
+      const y = STRIP_H - (v / max) * (STRIP_H - 8) - 4;
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    });
+    stripLine.setAttribute('points', pts.join(' '));
+  }
+
+  function setReadout(label, value, phase, color) {
+    readoutLabel.textContent = label;
+    readoutValue.textContent = value;
+    readoutPhase.textContent = phase;
+    if (color) {
+      readoutValue.style.color = color;
+      stripLine.setAttribute('stroke', color);
+    }
+  }
+
+  resetStrip();
+
+  async function measurePing() {
+    setStatus('live', 'TESTING');
+    setReadout('LATENCY', '0.0', 'Sending probes...', '#D7DBDD');
+    log('Probing latency...');
+    const samples = [];
+    for (let i = 0; i < 6; i++) {
+      const t0 = performance.now();
+      try {
+        await fetch('https://speed.cloudflare.com/__down?bytes=0&cachebust=' + Math.random(), { cache: 'no-store' });
+      } catch (e) {
+        continue;
+      }
+      const t1 = performance.now();
+      const rtt = t1 - t0;
+      if (i > 0) samples.push(rtt);
+      readoutValue.textContent = rtt.toFixed(1);
+      pushStrip(rtt, 50);
+    }
+    if (samples.length === 0) throw new Error('ping failed');
+    samples.sort((a, b) => a - b);
+    const ping = samples[0];
+    pingVal.textContent = ping.toFixed(0);
+    log('Latency locked at ' + ping.toFixed(1) + ' ms', 'ok');
+    return ping;
+  }
+
+  async function measureDownload() {
+    setReadout('DOWNLOAD', '0.0', 'Pulling data from edge...', '#FFB454');
+    log('Starting download pull...');
+    resetStrip();
+    const bytesTarget = 26000000;
+    const url = 'https://speed.cloudflare.com/__down?bytes=' + bytesTarget + '&cachebust=' + Math.random();
+    const start = performance.now();
+    let received = 0;
+    let lastT = start, lastB = 0;
+    let peakMbps = 1;
+
+    const res = await fetch(url, { cache: 'no-store' });
+    const reader = res.body.getReader();
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      received += value.length;
+      const now = performance.now();
+      if (now - lastT > 150) {
+        const intervalMbps = ((received - lastB) * 8) / ((now - lastT) / 1000) / 1e6;
+        lastT = now; lastB = received;
+        peakMbps = Math.max(peakMbps, intervalMbps);
+        readoutValue.textContent = intervalMbps.toFixed(1);
+        pushStrip(intervalMbps, peakMbps);
+      }
+    }
+    const totalTime = (performance.now() - start) / 1000;
+    const mbps = (received * 8) / totalTime / 1e6;
+    downVal.textContent = mbps.toFixed(1);
+    log('Download settled at ' + mbps.toFixed(1) + ' Mbps', 'ok');
+    return mbps;
+  }
+
+  function measureUpload() {
+    return new Promise((resolve, reject) => {
+      setReadout('UPLOAD', '0.0', 'Pushing data to edge...', '#6EC9D8');
+      log('Starting upload push...');
+      resetStrip();
+      const size = 12000000;
+      const blob = new Blob([new Uint8Array(size)]);
+      const xhr = new XMLHttpRequest();
+      let lastT = performance.now(), lastB = 0, peakMbps = 1;
+
+      xhr.upload.addEventListener('progress', (e) => {
+        const now = performance.now();
+        if (now - lastT > 150 && e.loaded > lastB) {
+          const intervalMbps = ((e.loaded - lastB) * 8) / ((now - lastT) / 1000) / 1e6;
+          lastT = now; lastB = e.loaded;
+          peakMbps = Math.max(peakMbps, intervalMbps);
+          readoutValue.textContent = intervalMbps.toFixed(1);
+          pushStrip(intervalMbps, peakMbps);
+        }
+      });
+
+      const start = performance.now();
+      xhr.addEventListener('load', () => {
+        const totalTime = (performance.now() - start) / 1000;
+        const mbps = (size * 8) / totalTime / 1e6;
+        upVal.textContent = mbps.toFixed(1);
+        log('Upload settled at ' + mbps.toFixed(1) + ' Mbps', 'ok');
+        resolve(mbps);
+      });
+      xhr.addEventListener('error', () => reject(new Error('upload failed')));
+
+      xhr.open('POST', 'https://speed.cloudflare.com/__up', true);
+      xhr.send(blob);
+    });
+  }
+
+  async function runTest() {
+    runBtn.disabled = true;
+    runBtn.textContent = 'Running...';
+    brandLed.style.background = '#8FD19E';
+    pingVal.textContent = '—';
+    downVal.textContent = '—';
+    upVal.textContent = '—';
+    log('— New test started —');
+
+    try {
+      await measurePing();
+      await measureDownload();
+      await measureUpload();
+      setStatus('', 'COMPLETE');
+      setReadout('COMPLETE', downVal.textContent, 'Ping ' + pingVal.textContent + ' ms · Down ' + downVal.textContent + ' Mbps · Up ' + upVal.textContent + ' Mbps', '#8FD19E');
+      log('Test complete.', 'ok');
+    } catch (err) {
+      setStatus('err', 'ERROR');
+      setReadout('ERROR', '—', 'Could not complete the test. Check your connection.', '#FF6B6B');
+      log('Test failed: ' + err.message, 'warn');
+    } finally {
+      runBtn.disabled = false;
+      runBtn.textContent = 'Run again';
+      brandLed.style.background = '#FFB454';
+    }
+  }
+
+  runBtn.addEventListener('click', runTest);
+})();
+</script>
+
+</body>
+</html>
